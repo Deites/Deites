@@ -1,0 +1,46 @@
+class UserPublicationTest(TestCase):
+
+    def setUp(self):
+        self.client = Client()
+        test_user1 = User.objects.create_user(username='testuser1', password='testuser1')
+        test_user1.save()
+    
+    def test_if_logged_in_GET(self):
+        login = self.client.login(username='testuser1', password='testuser1')
+        response = self.client.get(reverse('label:publication'))
+
+        self.assertEqual(str(response.context['user']), 'testuser1')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'label/publication.html')
+
+    def test_if_logged_in_POST(self):
+        login = self.client.login(username='testuser1', password='testuser1')
+        pubgenre = PubGenre.objects.create(pub_genre='Рэп')
+
+        #creating random image
+        im = Image.new(mode='RGB', size=(200, 200))
+        im_io = BytesIO()
+        im.save(im_io, 'JPEG')
+        im_io.seek(0)
+
+        image = InMemoryUploadedFile(im_io, None, 'random-name.jpg', 'image/jpeg', len(im_io.getvalue()), None)
+
+        response = self.client.post(reverse('label:publication'), {
+            'name_release': 'Testing Release', 
+            'count' : 3, 
+            'genre' : pubgenre,
+            'download_cover': image,
+            'form-TOTAL_FORMS' : 1,
+            'form-INITIAL_FORMS' : 0,
+            'form-0-name_artist' : 'Jack',
+            'form-0-DELETE' : False,
+        })
+
+
+        print(response)
+
+    def test_if__not_logged_in(self):
+        response = self.client.get(reverse('label:publication'))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith(''))
