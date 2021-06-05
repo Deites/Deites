@@ -1,0 +1,68 @@
+class UserPublication(LoginRequiredMixin, generic.CreateView):
+    login_url = 'accounts:login'
+    template_name = 'label/publication.html'
+    
+    def get(self, *args, **kwargs):
+        form = PublicationForm()
+        formset = NameFormSet(queryset=NameArtist.objects.none())
+
+        return self.render_to_response({'name_formset' : formset, 'form' : form})
+
+    @method_decorator(ratelimit(key='ip', rate='1/10s', method='POST', block=True))
+    def post(self, *args, **kwargs):
+        form = PublicationForm(self.request.POST, self.request.FILES) 
+        formset = NameFormSet(self.request.POST)
+
+
+        if form.is_valid() and formset.is_valid():       
+            #creating id of release
+            pf = get_object_or_404(Publications, pk=form.save().id)
+
+            #returning quantity of tracks
+            p_count = int(form.cleaned_data['count'])         
+                 
+            #creating forms of tracks (Step:2)
+            for quantity in range(p_count):
+                pf.pt.create()
+
+            #Creating platforms and date (Step:3)
+            PublicationPlatforms.objects.create(platforms_date_publications=pf) 
+
+            #saving private data
+            current_user = self.request.user
+            current_user.session_data.create(key_session_pub=pf.id)
+
+            #Saving publication
+            form.save()
+
+            #saving artists
+            max_formset = 0
+            for forms in formset:
+                if forms.cleaned_data.get('name_artist'):
+                    fs = get_object_or_404(NameArtist, pk=forms.save().id)
+                    fs.name_artist_publications = pf
+                    if forms.cleaned_data.get('DELETE'):
+                        fs.delete()
+                    elif max_formset < 3:
+                        fs.save() 
+                        max_formset += 1 
+                    else:
+                        fs.delete() 
+                 
+
+            #saving current names for tracks (duplication)
+            alltracks = pf.pt.order_by('id')
+            for a in alltracks:
+                t = get_object_or_404(PublicationsTraks, pk=a.id)
+                for fcd in formset.cleaned_data:
+                    if fcd.get('name_artist'):
+                        if fcd.get('DELETE') == False:
+                            t.napt.create(name_artist=fcd['name_artist'])                    
+
+            #redirects
+            if 'next' in self.request.POST:           
+                return HttpResponseRedirect(reverse_lazy('label:publication_track', args=(pf.id,)))
+            else:
+                return HttpResponseRedirect(reverse_lazy('label:release'))
+
+        raise Http404('Повторите заполнение формы. Если ошибка останется, сообщите о ней.')
